@@ -3,7 +3,8 @@
 Warp is a Go package that provides a simple way to run a set of functions in the correct order and gather the output.
 It combines paradigms of dependency injection and pipeline execution to provide a flexible and powerful way to run functions.
 
-It uses reflection during initialization to build a dependency graph of the functions and then runs them in the correct order when the engine is executed.
+It uses reflection during initialization to build a dependency graph of the functions and then runs them in the correct order when the engine is executed. Dependencies are resolved using the input and output types of the functions
+parameters and return values.
 
 ## Installation
 

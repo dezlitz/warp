@@ -149,7 +149,7 @@ func Test_EngineInit(t *testing.T) {
 
 		assertErrContains(t, err, "input type warp_test.inType is also an output type")
 
-		t.Run("when wrapped in optional type", func(t *testing.T) {
+		t.Run("when wrapped in optional input type", func(t *testing.T) {
 			t.Parallel()
 			_, err := Initialize(
 				func(Optional[inType]) (inType, error) {
@@ -165,24 +165,41 @@ func Test_EngineInit(t *testing.T) {
 
 			assertErrContains(t, err, "input type warp_test.inType is also an output type")
 		})
+
+		t.Run("when wrapped in optional output type", func(t *testing.T) {
+			t.Parallel()
+			_, err := Initialize(
+				func(inType) (Optional[inType], error) {
+					return Optional[inType]{}, nil
+				},
+				func(context.Context, inType) (outType1, error) {
+					return "", nil
+				},
+				func(context.Context, inType) (outType2, outType3, error) {
+					return "", "", nil
+				},
+			)
+
+			assertErrContains(t, err, "input type warp_test.inType is also an output type")
+		})
 	})
 
-	t.Run("should return an error if any of the functions return any of optional types", func(t *testing.T) {
-		t.Parallel()
-		_, err := Initialize(
-			func(inType) (outType1, error) {
-				return "", nil
-			},
-			func(context.Context, inType) (outType2, error) {
-				return "", nil
-			},
-			func(context.Context, inType) (optType3, error) {
-				return optType3{}, nil
-			},
-		)
+	// t.Run("should return an error if any of the functions return any of optional types", func(t *testing.T) {
+	// 	t.Parallel()
+	// 	_, err := Initialize(
+	// 		func(inType) (outType1, error) {
+	// 			return "", nil
+	// 		},
+	// 		func(context.Context, inType) (outType2, error) {
+	// 			return "", nil
+	// 		},
+	// 		func(context.Context, inType) (optType3, error) {
+	// 			return optType3{}, nil
+	// 		},
+	// 	)
 
-		assertErrContains(t, err, "outType3] must not be an optional type")
-	})
+	// 	assertErrContains(t, err, "outType3] must not be an optional type")
+	// })
 
 	t.Run("should return an error if at least two functions are cyclically dependent on each other", func(t *testing.T) {
 		t.Parallel()
@@ -200,15 +217,15 @@ func Test_EngineInit(t *testing.T) {
 
 		assertErrContains(t, err, "cyclic dependency detected")
 
-		t.Run("when wrapped in optional type", func(t *testing.T) {
+		t.Run("when wrapped in optional types", func(t *testing.T) {
 			_, err := Initialize(
 				func(context.Context, inType) (outType1, error) {
 					return "", nil
 				},
-				func(Optional[outType1]) (outType2, error) {
-					return "", nil
+				func(Optional[outType1]) (Optional[outType2], error) {
+					return Optional[outType2]{}, nil
 				},
-				func(Optional[outType2]) (inType, error) {
+				func(outType2) (inType, error) {
 					return "", nil
 				},
 			)
@@ -796,7 +813,7 @@ func Test_EngineRun(t *testing.T) {
 		}
 	})
 
-	t.Run("optional parameters", func(t *testing.T) {
+	t.Run("optional input parameters", func(t *testing.T) {
 		t.Parallel()
 
 		t.Run("when corresponding arguments provided", func(t *testing.T) {
@@ -1066,6 +1083,182 @@ func Test_EngineRun(t *testing.T) {
 		})
 	})
 
+	t.Run("optional output parameters", func(t *testing.T) {
+		t.Parallel()
+
+		t.Run("when return values are set", func(t *testing.T) {
+			t.Run("downstream functions with dependant parameters are called", func(t *testing.T) {
+				var count atomic.Int32
+				ngn, err := Initialize(
+					func(_ context.Context, in inType1) (Optional[outType1], error) {
+						count.Add(1)
+						return Optional[outType1]{
+							Val:   outType1{in.ValueIn1 + "<outType1>"},
+							IsSet: true,
+						}, nil
+					},
+					func(_ context.Context, in outType1) (outType2, error) {
+						count.Add(1)
+						return outType2{in.ValueOut1 + "<outType2>"}, nil
+					},
+				)
+				if err != nil {
+					t.Fatal(err)
+				}
+
+				ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+				defer cancel()
+				out, err := Run[any](
+					ctx,
+					ngn,
+					inType1{"<inType1>"},
+				)
+				if err != nil {
+					t.Fatal(err)
+				}
+
+				if count.Load() != 2 {
+					t.Fatalf("expected 2 function calls, got %d", count.Load())
+				}
+
+				assert.Contains(t, out, any(outType2{ValueOut2: "<inType1><outType1><outType2>"}))
+
+			})
+
+			t.Run("downstream functions with OPTIONAL dependant parameters are called", func(t *testing.T) {
+				var count atomic.Int32
+				ngn, err := Initialize(
+					func(_ context.Context, in inType1) (Optional[outType1], error) {
+						count.Add(1)
+						return Optional[outType1]{
+							Val:   outType1{in.ValueIn1 + "<outType1>"},
+							IsSet: true,
+						}, nil
+					},
+					func(_ context.Context, in outType1) (outType2, error) {
+						count.Add(1)
+						return outType2{in.ValueOut1 + "<outType2>"}, nil
+					},
+				)
+				if err != nil {
+					t.Fatal(err)
+				}
+
+				ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+				defer cancel()
+				out, err := Run[any](
+					ctx,
+					ngn,
+					inType1{"<inType1>"},
+				)
+				if err != nil {
+					t.Fatal(err)
+				}
+
+				if count.Load() != 2 {
+					t.Fatalf("expected 2 function calls, got %d", count.Load())
+				}
+
+				assert.Contains(t, out, any(outType2{ValueOut2: "<inType1><outType1><outType2>"}))
+
+			})
+
+		})
+
+		t.Run("when return values are not set", func(t *testing.T) {
+			t.Run("downstream functions with dependant parameters are NOT called", func(t *testing.T) {
+				var count atomic.Int32
+				ngn, err := Initialize(
+					func(_ context.Context, in inType1) (outType1, error) {
+						count.Add(1)
+						return outType1{in.ValueIn1 + "<outType1>"}, nil
+					},
+					func(_ context.Context, in outType1) (Optional[outType2], error) {
+						count.Add(1)
+						return Optional[outType2]{
+							Val:   outType2{ValueOut2: "<not-used>"},
+							IsSet: false,
+						}, nil
+					},
+					func(_ context.Context, in outType2) (outType3, error) {
+						count.Add(1)
+						return outType3{in.ValueOut2 + "<outType3>"}, nil
+					},
+				)
+				if err != nil {
+					t.Fatal(err)
+				}
+
+				ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+				defer cancel()
+				out, err := Run[any](
+					ctx,
+					ngn,
+					inType1{"<inType1>"},
+				)
+				if err != nil {
+					t.Fatal(err)
+				}
+
+				if count.Load() != 2 {
+					t.Fatalf("expected 2 function calls, got %d", count.Load())
+				}
+
+				assert.Contains(t, out, any(outType1{ValueOut1: "<inType1><outType1>"}))
+				assert.NotContains(t, out, any(outType2{ValueOut2: "<not-used>"}))
+				assert.NotContains(t, out, any(outType3{ValueOut3: "<outType3>"}))
+				assert.NotContains(t, out, any(outType3{ValueOut3: "<not-used><outType3>"}))
+
+			})
+
+			t.Run("downstream functions with OPTIONAL dependant parameters are called", func(t *testing.T) {
+				var count atomic.Int32
+				ngn, err := Initialize(
+					func(_ context.Context, in inType1) (outType1, error) {
+						count.Add(1)
+						return outType1{in.ValueIn1 + "<outType1>"}, nil
+					},
+					func(_ context.Context, in outType1) (Optional[outType2], error) {
+						count.Add(1)
+						return Optional[outType2]{
+							Val:   outType2{ValueOut2: "<not-used>"},
+							IsSet: false,
+						}, nil
+					},
+					func(_ context.Context, in1 outType1, in2 Optional[outType2]) (outType3, error) {
+						count.Add(1)
+						return outType3{in1.ValueOut1 + in2.Val.ValueOut2 + "<outType3>"}, nil
+					},
+				)
+				if err != nil {
+					t.Fatal(err)
+				}
+
+				ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+				defer cancel()
+				out, err := Run[any](
+					ctx,
+					ngn,
+					inType1{"<inType1>"},
+				)
+				if err != nil {
+					t.Fatal(err)
+				}
+
+				if count.Load() != 3 {
+					t.Fatalf("expected 3 function calls, got %d", count.Load())
+				}
+
+				assert.Contains(t, out, any(outType1{ValueOut1: "<inType1><outType1>"}))
+				assert.NotContains(t, out, any(outType2{ValueOut2: "<not-used>"}))
+				assert.Contains(t, out, any(outType3{ValueOut3: "<inType1><outType1><outType3>"}))
+
+			})
+
+		})
+
+	})
+
 	t.Run("should propagate the context to the functions", func(t *testing.T) {
 		t.Parallel()
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
@@ -1187,41 +1380,162 @@ func Test_EngineRun(t *testing.T) {
 		}
 	})
 
-	t.Run("should return an error if a type of provided inputs matches a function output type", func(t *testing.T) {
-		t.Parallel()
-		ngn, err := Initialize(
-			func(in inType1) outType1 {
-				panic("should not be called")
-			},
-			func(ctx context.Context, in outType1) (outType2, error) {
-				panic("should not be called")
-			},
-			func(ctx context.Context, in outType2) (outType3, error) {
-				panic("should not be called")
-			},
-			func(ctx context.Context, in outType3) (outType4, error) {
-				panic("should not be called")
-			},
-		)
-		if err != nil {
-			t.Fatal(err)
-		}
+	t.Run("should allow provided input to be optional type", func(t *testing.T) {
+		t.Run("when value is set and function input is not optional", func(t *testing.T) {
+			t.Parallel()
+			ngn, err := Initialize(
+				func(in inType1) outType1 {
+					return outType1{in.ValueIn1 + "<outType1>"}
+				},
+			)
+			if err != nil {
+				t.Fatal(err)
+			}
 
-		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-		defer cancel()
-		_, err = Run[outType4](
-			ctx,
-			ngn,
-			inType1{"<inType>"},
-			outType1{"<outType1>"},
-		)
-		if err == nil {
-			t.Fatal("expected an error, got nil")
-		}
+			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			defer cancel()
+			out, err := Run[outType1](
+				ctx,
+				ngn,
+				Optional[inType1]{
+					Val:   inType1{"<inType1>"},
+					IsSet: true,
+				},
+			)
+			if err != nil {
+				t.Fatal(err)
+			}
 
-		if expected := "provided input type matches function output type: warp_test.outType1"; err.Error() != expected {
-			t.Fatalf("expected error message '%s', got '%s'", expected, err)
-		}
+			if len(out) != 1 {
+				t.Fatalf("expected 1 output value, got %d", len(out))
+			}
+
+			if expected := "<inType1><outType1>"; out[0].ValueOut1 != expected {
+				t.Fatalf("expected output value '%s', got '%s'", expected, out[0])
+			}
+		})
+
+		t.Run("when value is NOT set and function input is not optional", func(t *testing.T) {
+			t.Parallel()
+			ngn, err := Initialize(
+				func(in inType1) outType1 {
+					return outType1{in.ValueIn1 + "<outType1>"}
+				},
+				func(in inType2) (outType2, error) {
+					panic("should not be called")
+				},
+			)
+			if err != nil {
+				t.Fatal(err)
+			}
+
+			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			defer cancel()
+
+			out, err := Run[outType1](
+				ctx,
+				ngn,
+				Optional[inType1]{
+					IsSet: true,
+					Val:   inType1{ValueIn1: "<inType1>"},
+				},
+				Optional[inType2]{
+					IsSet: false,
+					Val:   inType2{ValueIn2: "<not-set>"},
+				},
+			)
+			if err != nil {
+				t.Fatal(err)
+			}
+
+			if len(out) != 1 {
+				t.Fatalf("expected 1 output value, got %d", len(out))
+			}
+
+			if expected := "<inType1><outType1>"; out[0].ValueOut1 != expected {
+				t.Fatalf("expected output value '%s', got '%s'", expected, out[0])
+			}
+
+		})
+
+	})
+
+	t.Run("should return an error if a type of provided inputs matches another function", func(t *testing.T) {
+
+		t.Run("output type", func(t *testing.T) {
+			t.Parallel()
+			ngn, err := Initialize(
+				func(in inType1) outType1 {
+					panic("should not be called")
+				},
+				func(ctx context.Context, in outType1) (outType2, error) {
+					panic("should not be called")
+				},
+				func(ctx context.Context, in outType2) (outType3, error) {
+					panic("should not be called")
+				},
+				func(ctx context.Context, in outType3) (outType4, error) {
+					panic("should not be called")
+				},
+			)
+			if err != nil {
+				t.Fatal(err)
+			}
+
+			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			defer cancel()
+			_, err = Run[outType4](
+				ctx,
+				ngn,
+				inType1{"<inType>"},
+				outType1{"<outType1>"},
+			)
+			if err == nil {
+				t.Fatal("expected an error, got nil")
+			}
+
+			if expected := "provided input type matches function output type: warp_test.outType1"; err.Error() != expected {
+				t.Fatalf("expected error message '%s', got '%s'", expected, err)
+			}
+		})
+
+		t.Run("optional output type", func(t *testing.T) {
+			t.Parallel()
+			ngn, err := Initialize(
+				func(in inType1) outType1 {
+					panic("should not be called")
+				},
+				func(ctx context.Context, in outType1) (Optional[outType2], error) {
+					panic("should not be called")
+				},
+				func(ctx context.Context, in outType2) (outType3, error) {
+					panic("should not be called")
+				},
+				func(ctx context.Context, in outType3) (outType4, error) {
+					panic("should not be called")
+				},
+			)
+			if err != nil {
+				t.Fatal(err)
+			}
+
+			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			defer cancel()
+			_, err = Run[outType4](
+				ctx,
+				ngn,
+				inType1{"<inType>"},
+				outType2{"<outType2>"},
+			)
+			if err == nil {
+				t.Fatal("expected an error, got nil")
+			}
+
+			if expected := "provided input type matches function output type: warp_test.outType2"; err.Error() != expected {
+				t.Fatalf("expected error message '%s', got '%s'", expected, err)
+			}
+
+		})
 	})
 
 	t.Run("should not execute downstream function if an upstream function did not run", func(t *testing.T) {

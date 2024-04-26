@@ -82,11 +82,12 @@ func validateDistinctInputOutputTypes(fnT reflect.Type) error {
 		if isType[error](outT) {
 			continue
 		}
+		outTU, _ := unwrapOptional(outT)
 
 		for _, inT := range inputs(fnT) {
-			inT, _ = unwrapOptional(inT)
-			if outT == inT {
-				return fmt.Errorf("input type %s is also an output type", inT)
+			inTU, _ := unwrapOptional(inT)
+			if outTU == inTU {
+				return fmt.Errorf("input type %s is also an output type", inTU)
 			}
 		}
 	}
@@ -148,16 +149,6 @@ func validateNoCyclicDependancies(fnVs []reflect.Value) error {
 	return nil
 }
 
-func validateNoOutputOptionalTypes(fnT reflect.Type) error {
-	for _, outT := range outputs(fnT) {
-		if isOptional(outT) {
-			return fmt.Errorf("output type %s must not be an optional type", outT)
-		}
-	}
-
-	return nil
-}
-
 func checkCyclicDependancies(fnV reflect.Value, pathFuncs []reflect.Value, fnVs []reflect.Value) error {
 	fnT := reflect.TypeOf(fnV.Interface())
 	for _, pathFn := range pathFuncs {
@@ -172,12 +163,13 @@ func checkCyclicDependancies(fnV reflect.Value, pathFuncs []reflect.Value, fnVs 
 		if isType[error](outT) {
 			continue
 		}
+		outTU, _ := unwrapOptional(outT)
 
 		for _, fnV := range fnVs {
 			fnT := reflect.TypeOf(fnV.Interface())
 			for _, inT := range inputs(fnT) {
-				inT, _ = unwrapOptional(inT)
-				if inT == outT {
+				inTU, _ := unwrapOptional(inT)
+				if inTU == outTU {
 					err := checkCyclicDependancies(fnV, pathFuncs, fnVs)
 					if err != nil {
 						return err

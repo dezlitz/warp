@@ -59,7 +59,6 @@ func Initialize(fns ...any) (engine *Engine, err error) {
 			validateDistinctInputOutputTypes,
 			validateFunctionNotVariadic,
 			validateSameInputTypes,
-			validateNoOutputOptionalTypes,
 		} {
 			if err := validator(fnT); err != nil {
 				return nil, wrapValidationErrorWithInput(fnV, err)
@@ -116,13 +115,16 @@ func Run[T any](ctx context.Context, e *Engine, provided ...any) ([]T, error) {
 	// Initialize storage with provided inputs
 	storage := &sync.Map{}
 	for _, in := range provided {
-		storage.Store(reflect.TypeOf(in), reflect.ValueOf(in))
+		inT := reflect.TypeOf(in)
+		inTU, _ := unwrapOptional(inT)
+		storage.Store(inTU, reflect.ValueOf(in))
 	}
 
 	// Initialize a channel for each output type
 	notifiers := map[reflect.Type]chan struct{}{}
 	for outT := range e.outputTypes {
-		notifiers[outT] = make(chan struct{})
+		outTU, _ := unwrapOptional(outT)
+		notifiers[outTU] = make(chan struct{})
 	}
 
 	eg, ctx := errgroup.WithContext(ctx)
@@ -139,7 +141,9 @@ func Run[T any](ctx context.Context, e *Engine, provided ...any) ([]T, error) {
 	var out []T
 	storage.Range(func(_ any, val any) bool {
 		valV := val.(reflect.Value)
-		if e.outputTypes[valV.Type()] {
+		valT := valV.Type()
+		valTU, _ := unwrapOptional(valT)
+		if e.outputTypes[valTU] {
 			if v, ok := convert[T](valV); ok {
 				out = append(out, v)
 			}
@@ -177,12 +181,13 @@ func buildRunFuncs(fns ...any) map[reflect.Type]runFunc {
 						return err
 					}
 
+					// Find the value in storage
 					v, ok := loadValue(storage, inT)
 					if !ok {
+						// Skip function if input is not available
 						closeNotifiers(notifiers, outputs...)
 						return nil
 					}
-
 					ins = append(ins, v)
 				}
 
@@ -214,7 +219,8 @@ func getError(outValues []reflect.Value, errPos int) error {
 func storeOutputs(storage *sync.Map, outValues []reflect.Value, outputs []reflect.Type) {
 	for i, outT := range outputs {
 		if !isType[error](outT) {
-			storage.Store(outT, outValues[i])
+			outTU, _ := unwrapOptional(outT)
+			storage.Store(outTU, outValues[i])
 		}
 	}
 }
@@ -222,7 +228,8 @@ func storeOutputs(storage *sync.Map, outValues []reflect.Value, outputs []reflec
 func closeNotifiers(notifiers map[reflect.Type]chan struct{}, outputs ...reflect.Type) {
 	for _, outT := range outputs {
 		if !isType[error](outT) {
-			close(notifiers[outT])
+			outTU, _ := unwrapOptional(outT)
+			close(notifiers[outTU])
 		}
 	}
 }
@@ -284,19 +291,44 @@ func loadValue(
 	storage *sync.Map,
 	inT reflect.Type,
 ) (_ reflect.Value, ok bool) {
-	inTU, isOptional := unwrapOptional(inT)
+	// Unwrap function input type if it is Optional[T]
+	inTU, isInTOptional := unwrapOptional(inT)
 
+	// Load value from storage
 	v, ok := storage.Load(inTU)
 	if !ok {
-		if isOptional {
+		// Return zero value if input is not available and allow function to run
+		if isInTOptional {
 			return reflect.Zero(inT), true
 		}
 
+		// Skip function if input is not available and not Optional[T]
 		return reflect.Value{}, false
 	}
 
-	if isOptional {
+	// Wrap value in Optional[T] if function input type is Optional[T] and value is NOT also Optional[T]
+	if isInTOptional && v.(reflect.Value).Type() != inT {
 		return newOptional(inT, v.(reflect.Value)), true
+	}
+
+	// if function input type is T and value is Optional[T]
+	if !isInTOptional && isOptional(v.(reflect.Value).Type()) {
+		if v.(reflect.Value).FieldByName("IsSet").Bool() {
+			// Unwrap value
+			return v.(reflect.Value).FieldByName("Val"), true
+		}
+		// Skip function if input is Optional but not set
+		return reflect.Value{}, false
+	}
+
+	// Both input type and value are Optional[T]
+	if isInTOptional && v.(reflect.Value).Type() == inT {
+		// Set value to empty if Optional[T] is not set
+		if !v.(reflect.Value).FieldByName("IsSet").Bool() {
+			return reflect.Zero(inT), true
+		}
+		// Unwrap value
+		return v.(reflect.Value).FieldByName("Val"), true
 	}
 
 	return v.(reflect.Value), true
@@ -311,7 +343,9 @@ func wrapValidationError(err error) error {
 }
 
 func referTo(rv reflect.Value) string {
-	reference := rv.Type().String()
+	rvT := rv.Type()
+	rvtU, _ := unwrapOptional(rvT)
+	reference := rvtU.String()
 	if rv.Type().Kind() == reflect.Func {
 		reference = strings.TrimPrefix(reference, "func")              // remove generic func type prefix
 		reference = runtime.FuncForPC(rv.Pointer()).Name() + reference // make func name the prefix
@@ -342,17 +376,26 @@ func getPosOfType[T any](in []reflect.Type) int {
 }
 
 func validateProvided(provided []any, outputs map[reflect.Type]bool) error {
+	// Unwrap any Optional[T] output types
+	outputsU := map[reflect.Type]bool{}
+	for outT := range outputs {
+		outTU, _ := unwrapOptional(outT)
+		outputsU[outTU] = true
+	}
+
 	checked := map[reflect.Type]bool{}
 	for _, in := range provided {
-		inType := reflect.TypeOf(in)
-		if alreadyChecked := checked[inType]; alreadyChecked {
-			return fmt.Errorf("duplicate provided input type: %s", inType)
-		}
-		if outputs[inType] {
-			return fmt.Errorf("provided input type matches function output type: %s", inType)
+		inT := reflect.TypeOf(in)
+		inTU, _ := unwrapOptional(inT)
+		if alreadyChecked := checked[inT]; alreadyChecked {
+			return fmt.Errorf("duplicate provided input type: %s", inTU)
 		}
 
-		checked[inType] = true
+		if outputsU[inTU] {
+			return fmt.Errorf("provided input type matches function output type: %s", inTU)
+		}
+
+		checked[inT] = true
 	}
 	return nil
 }
