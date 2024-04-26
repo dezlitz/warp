@@ -1,1 +1,80 @@
-# warp
+# Warp
+
+Warp is a Go package that provides a simple way to run a set of functions in the correct order and gather the output.
+It combines paradigms of dependency injection and pipeline execution to provide a flexible and powerful way to run functions.
+
+It uses reflection during initialization to build a dependency graph of the functions and then runs them in the correct order when the engine is executed.
+
+## Installation
+
+```bash
+go get github.com/dezlitz/warp
+```
+
+## Usage
+
+```go
+package main
+
+import (
+    "context"
+    "fmt"
+    "log"
+
+    "github.com/dezlitz/warp"
+)
+
+func main() {
+    // Initialize the engine with a set of functions
+    engine, err := warp.Initialize(
+        func() int { return 1 },
+        func() int { return 2 },
+        func(a int, b int) int { return a + b },
+    )
+    if err != nil {
+        log.Fatal(err)
+    }
+
+    // Run the engine
+    results, err := warp.Run(context.Background(), engine)
+    if err != nil {
+        log.Fatal(err)
+    }
+
+    // Print the results
+    for _, result := range results {
+        fmt.Println(result)
+    }
+}
+```
+
+## License
+
+MIT
+
+## Author
+
+dezlitz
+
+## Contributing
+
+Contributions are welcome! Feel free to open an issue or submit a pull request if you find a bug or want to add a new feature.
+
+## Acknowledgements
+
+This package was inspired by the [topological sort](https://en.wikipedia.org/wiki/Topological_sorting) algorithm.
+
+## References
+
+- [Go Reflection](https://blog.golang.org/laws-of-reflection)
+- [Go Sync Map](https://pkg.go.dev/sync#Map)
+- [Go Errgroup](https://pkg.go.dev/golang.org/x/sync/errgroup)
+- [Go Context](https://pkg.go.dev/context)
+- [Go Type Assertions](https://tour.golang.org/methods/15)
+- [Go Type Conversions](https://tour.golang.org/methods/9)
+- [Go Type Switches](https://tour.golang.org/methods/16)
+
+## Changelog
+
+- 0.1.0
+  - Initial release
