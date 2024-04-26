@@ -38,7 +38,7 @@ func main() {
     }
 
     // Run the engine
-    results, err := warp.Run[out2[string]](context.Background(), engine, "Engine Test")
+    results, err := warp.Run[string](context.Background(), engine, "Engine Test")
     if err != nil {
         log.Fatal(err)
     }
