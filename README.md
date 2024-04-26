@@ -29,15 +29,16 @@ func main() {
     // Initialize the engine with a set of functions
     engine, err := warp.Initialize(
         func() int { return 1 },
-        func() int { return 2 },
-        func(a int, b int) int { return a + b },
+        func(a int) double { return a * 2.5 },
+        func(b double) out1[string] { return fmt.Sprintf("Result: %d", b) },
+        func(c string, d int, e out1[string]) out2[string] { return fmt.Sprintf("Result (Extended): Name: %s, Input: %s, Result: %s", c, d, e) },
     )
     if err != nil {
         log.Fatal(err)
     }
 
     // Run the engine
-    results, err := warp.Run(context.Background(), engine)
+    results, err := warp.Run[out2[string]](context.Background(), engine, "Engine Test")
     if err != nil {
         log.Fatal(err)
     }
@@ -46,6 +47,9 @@ func main() {
     for _, result := range results {
         fmt.Println(result)
     }
+
+    // Result: 2.5
+    // Result (Extended): Name: Engine Test, Input: 1, Result: 2.5
 }
 ```
 
