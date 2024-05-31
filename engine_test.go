@@ -12,7 +12,7 @@ import (
 	"github.com/google/go-cmp/cmp"
 	"github.com/stretchr/testify/assert"
 
-	. "github.com/dezlitz/warp"
+	. "github.com/madlitz/warp"
 )
 
 type (

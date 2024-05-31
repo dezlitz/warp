@@ -9,7 +9,7 @@ parameters and return values.
 ## Installation
 
 ```bash
-go get github.com/dezlitz/warp
+go get github.com/madlitz/warp
 ```
 
 ## Usage
@@ -22,7 +22,7 @@ import (
     "fmt"
     "log"
 
-    "github.com/dezlitz/warp"
+    "github.com/madlitz/warp"
 )
 
 func main() {
@@ -59,7 +59,7 @@ MIT
 
 ## Author
 
-dezlitz
+madlitz
 
 ## Contributing
 

@@ -1,4 +1,4 @@
-module github.com/dezlitz/warp
+module github.com/madlitz/warp
 
 go 1.22.1
 
