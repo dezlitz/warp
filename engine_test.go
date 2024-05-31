@@ -366,78 +366,28 @@ func Test_EngineRun(t *testing.T) {
 			concreteType{"<inTypeConcrete>"},
 		)
 		assert.NoError(t, err)
-		assert.Len(t, out, 1)
-		assert.Equal(t, "<inTypeConcrete><inType><outType1><outType2><outType3><outTypeInterface><outType4>", out[0].ValueOut4)
+		assert.Equal(t, "<inTypeConcrete><inType><outType1><outType2><outType3><outTypeInterface><outType4>", out.ValueOut4)
 	})
 
-	t.Run("should collect all outputs if Run type is any", func(t *testing.T) {
+	t.Run("should return error if the return value does not match any of the function output types", func(t *testing.T) {
+
 		t.Parallel()
 		ngn, err := Initialize(
-			func(ctx context.Context, in outType1) (outType2, error) {
-				return outType2{in.ValueOut1 + "<outType2>"}, nil
-			},
-			func(ctx context.Context, in outType2) (outType3, error) {
-				return outType3{in.ValueOut2 + "<outType3>"}, nil
-			},
-			func(ctx context.Context, in outType3) (outType4, error) {
-				return outType4{in.ValueOut3 + "<outType4>"}, nil
-			},
 			func(in inType1) outType1 { return outType1{in.ValueIn1 + "<outType1>"} },
 		)
-		assert.NoError(t, err)
+		if err != nil {
+			t.Fatal(err)
+		}
 
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
-		out, err := Run[any](
+		_, err = Run[outType2](
 			ctx,
 			ngn,
 			inType1{"<inType>"},
 		)
-		assert.NoError(t, err)
+		assertErrContains(t, err, "outType2 does not match any provided input types")
 
-		expected := []any{
-			outType1{"<inType><outType1>"},
-			outType2{"<inType><outType1><outType2>"},
-			outType3{"<inType><outType1><outType2><outType3>"},
-			outType4{"<inType><outType1><outType2><outType3><outType4>"},
-		}
-		assert.IsType(t, expected, out)
-		assert.Len(t, out, len(expected))
-		assert.ElementsMatch(t, out, expected)
-	})
-
-	t.Run("should run the engine successfully collecting a generic type annotation returned by collecting its concrete type", func(t *testing.T) {
-		t.Parallel()
-		ngn, err := Initialize(
-			func(ctx context.Context, in outType1) (outType2, error) {
-				return outType2{in.ValueOut1 + "<outType2>"}, nil
-			},
-			func(ctx context.Context, in outType2) (genType[int], error) {
-				return genType[int]{in.ValueOut2 + "<outType3>"}, nil
-			},
-			func(ctx context.Context, in genType[int]) (genType[float64], error) {
-				return genType[float64]{in.ValueOut5 + "<outType4>"}, nil
-			},
-			func(in inType1) outType1 { return outType1{in.ValueIn1 + "<outType1>"} },
-		)
-		assert.NoError(t, err)
-
-		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-		defer cancel()
-		out, err := Run[outType5](
-			ctx,
-			ngn,
-			inType1{"<inType>"},
-		)
-		assert.NoError(t, err)
-
-		expected := []outType5{
-			{ValueOut5: "<inType><outType1><outType2><outType3>"},
-			{ValueOut5: "<inType><outType1><outType2><outType3><outType4>"},
-		}
-		assert.IsType(t, expected, out)
-		assert.Len(t, out, len(expected))
-		assert.ElementsMatch(t, out, expected)
 	})
 
 	t.Run("should execute 2 sets of functions with unrelated dependencies", func(t *testing.T) {
@@ -481,12 +431,8 @@ func Test_EngineRun(t *testing.T) {
 			t.Fatalf("expected 4 function calls, got %d", count.Load())
 		}
 
-		if len(out) != 1 {
-			t.Fatalf("expected 1 output value, got %d", len(out))
-		}
-
-		if expected := "<inType2><outType4><outType5>"; out[0].ValueOut5 != expected {
-			t.Fatalf("expected output value '%s', got '%s'", expected, out[0])
+		if expected := "<inType2><outType4><outType5>"; out.ValueOut5 != expected {
+			t.Fatalf("expected output value '%s', got '%s'", expected, out)
 		}
 	})
 
@@ -528,12 +474,8 @@ func Test_EngineRun(t *testing.T) {
 			t.Fatalf("expected 3 function calls, got %d", count.Load())
 		}
 
-		if len(out) != 1 {
-			t.Fatalf("expected 1 output value, got %d", len(out))
-		}
-
-		if expected := "<inType2><outType2><outType3>"; !strings.Contains(out[0].ValueOut3, expected) {
-			t.Fatalf("expected output value contains '%s', got '%s'", expected, out[0])
+		if expected := "<inType2><outType2><outType3>"; !strings.Contains(out.ValueOut3, expected) {
+			t.Fatalf("expected output value contains '%s', got '%s'", expected, out)
 		}
 
 		count.Swap(0)
@@ -570,69 +512,14 @@ func Test_EngineRun(t *testing.T) {
 			t.Fatalf("expected 3 function calls, got %d", count.Load())
 		}
 
-		if len(out) != 1 {
-			t.Fatalf("expected 1 output value, got %d", len(out))
+		if expected := "<inType2>"; !strings.Contains(string(out.ValueOut3), expected) {
+			t.Fatalf("expected output value contains '%s', got '%s'", expected, out)
 		}
-
-		if expected := "<inType2>"; !strings.Contains(string(out[0].ValueOut3), expected) {
-			t.Fatalf("expected output value contains '%s', got '%s'", expected, out[0])
+		if expected := "<outType2>"; !strings.Contains(string(out.ValueOut3), expected) {
+			t.Fatalf("expected output value contains '%s', got '%s'", expected, out)
 		}
-		if expected := "<outType2>"; !strings.Contains(string(out[0].ValueOut3), expected) {
-			t.Fatalf("expected output value contains '%s', got '%s'", expected, out[0])
-		}
-		if expected := "<outType3>"; !strings.Contains(string(out[0].ValueOut3), expected) {
-			t.Fatalf("expected output value contains '%s', got '%s'", expected, out[0])
-		}
-	})
-
-	t.Run("should collect all outputs that are convertible to the Run type", func(t *testing.T) {
-		t.Parallel()
-		type (
-			outType1 string
-			outType2 string
-			outType3 string
-			outType4 string
-			inType1  string
-		)
-		ngn, err := Initialize(
-			func(ctx context.Context, in outType1) (outType2, error) {
-				return outType2(in + "<outType2>"), nil
-			},
-			func(ctx context.Context, in outType2) (outType3, error) {
-				return outType3(in + "<outType3>"), nil
-			},
-			func(ctx context.Context, in outType3) (outType4, error) {
-				return outType4(in + "<outType4>"), nil
-			},
-			func(in inType1) outType1 { return outType1(in + "<outType1>") },
-		)
-		if err != nil {
-			t.Fatal(err)
-		}
-
-		ctx, _ := context.WithTimeout(context.Background(), 5*time.Second)
-		out, err := Run[string](
-			ctx,
-			ngn,
-			inType1("<inType>"),
-		)
-		if err != nil {
-			t.Fatal(err)
-		}
-
-		if len(out) != 4 {
-			t.Fatalf("expected 4 output values, got %d", len(out))
-		}
-
-		expected := []string{
-			"<inType><outType1>",
-			"<inType><outType1><outType2>",
-			"<inType><outType1><outType2><outType3>",
-			"<inType><outType1><outType2><outType3><outType4>",
-		}
-
-		if cmp.Diff(expected, out, stringSliceTransformer) != "" {
-			t.Fatalf("expected output value '%s', got '%s'", expected, out)
+		if expected := "<outType3>"; !strings.Contains(string(out.ValueOut3), expected) {
+			t.Fatalf("expected output value contains '%s', got '%s'", expected, out)
 		}
 	})
 
@@ -679,12 +566,8 @@ func Test_EngineRun(t *testing.T) {
 				t.Fatalf("expected 4 function calls, got %d", count.Load())
 			}
 
-			if len(out) != 1 {
-				t.Fatalf("expected 1 output value, got %d", len(out))
-			}
-
-			if expected := "<inType1><outType2><outType4>"; out[0].ValueOut4 != expected {
-				t.Fatalf("expected output value '%s', got '%s'", expected, out[0])
+			if expected := "<inType1><outType2><outType4>"; out.ValueOut4 != expected {
+				t.Fatalf("expected output value '%s', got '%s'", expected, out)
 			}
 		})
 
@@ -707,12 +590,8 @@ func Test_EngineRun(t *testing.T) {
 				t.Fatalf("expected 4 function calls, got %d", count.Load())
 			}
 
-			if len(out) != 1 {
-				t.Fatalf("expected 1 output value, got %d", len(out))
-			}
-
-			if expected := "<inType1><outType2><outType3>"; out[0].ValueOut3 != expected {
-				t.Fatalf("expected output value '%s', got '%s'", expected, out[0])
+			if expected := "<inType1><outType2><outType3>"; out.ValueOut3 != expected {
+				t.Fatalf("expected output value '%s', got '%s'", expected, out)
 			}
 		})
 	})
@@ -757,11 +636,8 @@ func Test_EngineRun(t *testing.T) {
 			t.Fatalf("expected 4 function calls, got %d", count.Load())
 		}
 
-		if len(out) != 1 {
-			t.Fatalf("expected 1 output value, got %d", len(out))
-		}
-		if expected := "<inType1><outType1><inType1><outType2><outType3><outType4>"; out[0].ValueOut4 != expected {
-			t.Fatalf("expected output value '%s', got '%s'", expected, out[0])
+		if expected := "<inType1><outType1><inType1><outType2><outType3><outType4>"; out.ValueOut4 != expected {
+			t.Fatalf("expected output value '%s', got '%s'", expected, out)
 		}
 	})
 
@@ -805,12 +681,95 @@ func Test_EngineRun(t *testing.T) {
 			t.Fatalf("expected 3 function calls, got %d", count.Load())
 		}
 
-		if len(out) != 1 {
-			t.Fatalf("expected 1 output value, got %d", len(out))
+		if expected := "<inType1><outType1><outType4><outType5>"; out.ValueOut5 != expected {
+			t.Fatalf("expected output value '%s', got '%s'", expected, out)
 		}
-		if expected := "<inType1><outType1><outType4><outType5>"; out[0].ValueOut5 != expected {
-			t.Fatalf("expected output value '%s', got '%s'", expected, out[0])
+	})
+
+	t.Run("should return zero value if the return function belongs to a function that was not executed", func(t *testing.T) {
+		t.Parallel()
+		var count atomic.Int32
+		ngn, err := Initialize(
+			func(in inType1) outType1 {
+				count.Add(1)
+				return outType1{in.ValueIn1 + "<outType1>"}
+			},
+			func(_ context.Context, in inType2) (outType2, outType3, error) {
+				count.Add(1)
+				return outType2{in.ValueIn2 + "<outType2>"}, outType3{in.ValueIn2 + "<outType3>"}, nil
+			},
+			func(_ context.Context, in outType1) (outType4, error) {
+				count.Add(1)
+				return outType4{in.ValueOut1 + "<outType4>"}, nil
+			},
+		)
+		if err != nil {
+			t.Fatal(err)
 		}
+
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+
+		out, err := Run[outType4](
+			ctx,
+			ngn,
+			inType2{"<inType2>"},
+		)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		if count.Load() != 1 {
+			t.Fatalf("expected 1 function calls, got %d", count.Load())
+		}
+
+		if expected := ""; out.ValueOut4 != expected {
+			t.Fatalf("expected output value '%s', got '%s'", expected, out)
+		}
+
+	})
+
+	t.Run("should return nil if the return function belongs to a function that was not executed", func(t *testing.T) {
+		t.Parallel()
+		var count atomic.Int32
+		ngn, err := Initialize(
+			func(in inType1) outType1 {
+				count.Add(1)
+				return outType1{in.ValueIn1 + "<outType1>"}
+			},
+			func(_ context.Context, in inType2) (outType2, outType3, error) {
+				count.Add(1)
+				return outType2{in.ValueIn2 + "<outType2>"}, outType3{in.ValueIn2 + "<outType3>"}, nil
+			},
+			func(_ context.Context, in outType1) (*outType4, error) {
+				count.Add(1)
+				return &outType4{in.ValueOut1 + "<outType4>"}, nil
+			},
+		)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+
+		out, err := Run[*outType4](
+			ctx,
+			ngn,
+			inType2{"<inType2>"},
+		)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		if count.Load() != 1 {
+			t.Fatalf("expected 1 function calls, got %d", count.Load())
+		}
+
+		if out != nil {
+			t.Fatalf("expected output value '%v', got '%v'", nil, out)
+		}
+
 	})
 
 	t.Run("optional input parameters", func(t *testing.T) {
@@ -832,7 +791,7 @@ func Test_EngineRun(t *testing.T) {
 
 				ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 				defer cancel()
-				out, err := Run[any](
+				out, err := Run[outType1](
 					ctx,
 					ngn,
 					inType1{"<inType1>"},
@@ -845,7 +804,10 @@ func Test_EngineRun(t *testing.T) {
 					t.Fatalf("expected 1 function call, got %d", count.Load())
 				}
 
-				assert.Contains(t, out, any(outType1{ValueOut1: "<inType1><outType1>"}))
+				if expected := "<inType1><outType1>"; out.ValueOut1 != expected {
+					t.Fatalf("expected output value '%s', got '%s'", expected, out)
+				}
+
 			})
 
 			t.Run("from the result of the execution of an upstream function", func(t *testing.T) {
@@ -867,7 +829,7 @@ func Test_EngineRun(t *testing.T) {
 
 				ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 				defer cancel()
-				out, err := Run[any](
+				out, err := Run[outType2](
 					ctx,
 					ngn,
 					inType1{"<inType1>"},
@@ -880,7 +842,9 @@ func Test_EngineRun(t *testing.T) {
 					t.Fatalf("expected 2 function calls, got %d", count.Load())
 				}
 
-				assert.Contains(t, out, any(outType2{ValueOut2: "<inType1><outType1><outType2>"}))
+				if expected := "<inType1><outType1><outType2>"; out.ValueOut2 != expected {
+					t.Fatalf("expected output value '%s', got '%s'", expected, out)
+				}
 			})
 
 			t.Run("value is set", func(t *testing.T) {
@@ -915,7 +879,10 @@ func Test_EngineRun(t *testing.T) {
 					t.Fatalf("expected 1 function call, got %d", count.Load())
 				}
 
-				assert.Contains(t, out, outType1{ValueOut1: "<inType2>"})
+				if expected := "<inType2>"; out.ValueOut1 != expected {
+					t.Fatalf("expected output value '%s', got '%s'", expected, out)
+				}
+
 			})
 		})
 
@@ -935,7 +902,7 @@ func Test_EngineRun(t *testing.T) {
 
 				ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 				defer cancel()
-				out, err := Run[any](
+				out, err := Run[outType1](
 					ctx,
 					ngn,
 					inType1{"<inType1>"},
@@ -948,7 +915,9 @@ func Test_EngineRun(t *testing.T) {
 					t.Fatalf("expected 1 function call, got %d", count.Load())
 				}
 
-				assert.Contains(t, out, any(outType1{ValueOut1: "<outType1>"}))
+				if expected := "<outType1>"; out.ValueOut1 != expected {
+					t.Fatalf("expected output value '%s', got '%s'", expected, out)
+				}
 			})
 			t.Run("as the result of the execution of an upstream function", func(t *testing.T) {
 				var count atomic.Int32
@@ -969,7 +938,7 @@ func Test_EngineRun(t *testing.T) {
 
 				ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 				defer cancel()
-				out, err := Run[any](
+				out, err := Run[outType2](
 					ctx,
 					ngn,
 					inType1{"<inType1>"},
@@ -982,7 +951,9 @@ func Test_EngineRun(t *testing.T) {
 					t.Fatalf("expected 1 function call, got %d", count.Load())
 				}
 
-				assert.Contains(t, out, any(outType2{ValueOut2: "<outType2>"}))
+				if expected := "<outType2>"; out.ValueOut2 != expected {
+					t.Fatalf("expected output value '%s', got '%s'", expected, out)
+				}
 			})
 
 			t.Run("no value is set", func(t *testing.T) {
@@ -1017,7 +988,9 @@ func Test_EngineRun(t *testing.T) {
 					t.Fatalf("expected 1 function call, got %d", count.Load())
 				}
 
-				assert.Contains(t, out, outType1{ValueOut1: ""})
+				if expected := ""; out.ValueOut1 != expected {
+					t.Fatalf("expected output value '%s', got '%s'", expected, out)
+				}
 			})
 		})
 
@@ -1037,7 +1010,7 @@ func Test_EngineRun(t *testing.T) {
 
 				ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 				defer cancel()
-				out, err := Run[any](
+				out, err := Run[outType1](
 					ctx,
 					ngn,
 					inType1{"<inType1>"},
@@ -1050,9 +1023,11 @@ func Test_EngineRun(t *testing.T) {
 					t.Fatalf("expected 1 function call, got %d", count.Load())
 				}
 
-				assert.Contains(t, out, any(outType1{ValueOut1: "<inType1><outType1>"}))
+				if expected := "<inType1><outType1>"; out.ValueOut1 != expected {
+					t.Fatalf("expected output value '%s', got '%s'", expected, out)
+				}
 			})
-			t.Run("should not execute if value for required parameter is not supplied", func(t *testing.T) {
+			t.Run("should not execute if value for required parameter is NOT supplied", func(t *testing.T) {
 				var count atomic.Int32
 				ngn, err := Initialize(
 					func(_ context.Context, in inType1, in2 Optional[inType2]) (outType1, error) {
@@ -1067,7 +1042,7 @@ func Test_EngineRun(t *testing.T) {
 
 				ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 				defer cancel()
-				_, err = Run[any](
+				_, err = Run[outType1](
 					ctx,
 					ngn,
 					inType2{"<inType1>"},
@@ -1108,7 +1083,7 @@ func Test_EngineRun(t *testing.T) {
 
 				ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 				defer cancel()
-				out, err := Run[any](
+				out, err := Run[outType2](
 					ctx,
 					ngn,
 					inType1{"<inType1>"},
@@ -1121,7 +1096,9 @@ func Test_EngineRun(t *testing.T) {
 					t.Fatalf("expected 2 function calls, got %d", count.Load())
 				}
 
-				assert.Contains(t, out, any(outType2{ValueOut2: "<inType1><outType1><outType2>"}))
+				if expected := "<inType1><outType1><outType2>"; out.ValueOut2 != expected {
+					t.Fatalf("expected output value '%s', got '%s'", expected, out)
+				}
 
 			})
 
@@ -1146,7 +1123,7 @@ func Test_EngineRun(t *testing.T) {
 
 				ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 				defer cancel()
-				out, err := Run[any](
+				out, err := Run[outType2](
 					ctx,
 					ngn,
 					inType1{"<inType1>"},
@@ -1159,7 +1136,9 @@ func Test_EngineRun(t *testing.T) {
 					t.Fatalf("expected 2 function calls, got %d", count.Load())
 				}
 
-				assert.Contains(t, out, any(outType2{ValueOut2: "<inType1><outType1><outType2>"}))
+				if expected := "<inType1><outType1><outType2>"; out.ValueOut2 != expected {
+					t.Fatalf("expected output value '%s', got '%s'", expected, out)
+				}
 
 			})
 
@@ -1191,7 +1170,7 @@ func Test_EngineRun(t *testing.T) {
 
 				ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 				defer cancel()
-				out, err := Run[any](
+				out, err := Run[outType1](
 					ctx,
 					ngn,
 					inType1{"<inType1>"},
@@ -1204,12 +1183,13 @@ func Test_EngineRun(t *testing.T) {
 					t.Fatalf("expected 2 function calls, got %d", count.Load())
 				}
 
-				assert.Contains(t, out, any(outType1{ValueOut1: "<inType1><outType1>"}))
-				assert.NotContains(t, out, any(outType2{ValueOut2: "<not-used>"}))
-				assert.NotContains(t, out, any(outType3{ValueOut3: "<outType3>"}))
-				assert.NotContains(t, out, any(outType3{ValueOut3: "<not-used><outType3>"}))
+				if expected := "<inType1><outType1>"; !strings.Contains(out.ValueOut1, expected) {
+					t.Fatalf("expected output value contains '%s', got '%s'", expected, out)
+				}
 
 			})
+
+			t.Run("functions that are not called will return nil", func(t *testing.T) {})
 
 			t.Run("downstream functions with OPTIONAL dependant parameters are called", func(t *testing.T) {
 				var count atomic.Int32
@@ -1236,7 +1216,7 @@ func Test_EngineRun(t *testing.T) {
 
 				ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 				defer cancel()
-				out, err := Run[any](
+				out, err := Run[outType3](
 					ctx,
 					ngn,
 					inType1{"<inType1>"},
@@ -1249,9 +1229,9 @@ func Test_EngineRun(t *testing.T) {
 					t.Fatalf("expected 3 function calls, got %d", count.Load())
 				}
 
-				assert.Contains(t, out, any(outType1{ValueOut1: "<inType1><outType1>"}))
-				assert.NotContains(t, out, any(outType2{ValueOut2: "<not-used>"}))
-				assert.Contains(t, out, any(outType3{ValueOut3: "<inType1><outType1><outType3>"}))
+				if expected := "<inType1><outType1>"; !strings.Contains(out.ValueOut3, expected) {
+					t.Fatalf("expected output value contains '%s', got '%s'", expected, out)
+				}
 
 			})
 
@@ -1406,12 +1386,8 @@ func Test_EngineRun(t *testing.T) {
 				t.Fatal(err)
 			}
 
-			if len(out) != 1 {
-				t.Fatalf("expected 1 output value, got %d", len(out))
-			}
-
-			if expected := "<inType1><outType1>"; out[0].ValueOut1 != expected {
-				t.Fatalf("expected output value '%s', got '%s'", expected, out[0])
+			if expected := "<inType1><outType1>"; out.ValueOut1 != expected {
+				t.Fatalf("expected output value '%s', got '%s'", expected, out)
 			}
 		})
 
@@ -1448,12 +1424,8 @@ func Test_EngineRun(t *testing.T) {
 				t.Fatal(err)
 			}
 
-			if len(out) != 1 {
-				t.Fatalf("expected 1 output value, got %d", len(out))
-			}
-
-			if expected := "<inType1><outType1>"; out[0].ValueOut1 != expected {
-				t.Fatalf("expected output value '%s', got '%s'", expected, out[0])
+			if expected := "<inType1><outType1>"; out.ValueOut1 != expected {
+				t.Fatalf("expected output value '%s', got '%s'", expected, out)
 			}
 
 		})
@@ -1589,11 +1561,8 @@ func Test_EngineRun(t *testing.T) {
 			t.Fatalf("expected 3 function calls, got %d", count.Load())
 		}
 
-		if len(out) != 1 {
-			t.Fatalf("expected 1 output value, got %d", len(out))
-		}
-		if expected := "<inType1><outType1><inType1><outType2><inType1><outType1><outType4>"; out[0].ValueOut4 != expected {
-			t.Fatalf("expected output value '%s', got '%s'", expected, out[0])
+		if expected := "<inType1><outType1><inType1><outType2><inType1><outType1><outType4>"; out.ValueOut4 != expected {
+			t.Fatalf("expected output value '%s', got '%s'", expected, out)
 		}
 	})
 
@@ -1630,11 +1599,8 @@ func Test_EngineRun(t *testing.T) {
 			t.Fatalf("expected 2 function calls, got %d", count.Load())
 		}
 
-		if len(out) != 1 {
-			t.Fatalf("expected 1 output value, got %d", len(out))
-		}
-		if expected := "<inType1><outType1><inType2><outType2>"; out[0].ValueOut2 != expected {
-			t.Fatalf("expected output value '%s', got '%s'", expected, out[0])
+		if expected := "<inType1><outType1><inType2><outType2>"; out.ValueOut2 != expected {
+			t.Fatalf("expected output value '%s', got '%s'", expected, out)
 		}
 	})
 
@@ -1674,11 +1640,8 @@ func Test_EngineRun(t *testing.T) {
 			t.Fatalf("expected 2 function calls, got %d", count.Load())
 		}
 
-		if len(out) != 1 {
-			t.Fatalf("expected 1 output value, got %d", len(out))
-		}
-		if expected := "<inType2><outType2>"; out[0].ValueOut2 != expected {
-			t.Fatalf("expected output value '%s', got '%s'", expected, out[0])
+		if expected := "<inType2><outType2>"; out.ValueOut2 != expected {
+			t.Fatalf("expected output value '%s', got '%s'", expected, out)
 		}
 
 		dur := time.Since(start)

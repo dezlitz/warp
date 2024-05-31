@@ -101,15 +101,17 @@ func Initialize(fns ...any) (engine *Engine, err error) {
 //
 // If the engine cannot provide a value for a function input from either provided inputs or
 // returned function values, the functions execution is skipped.
-func Run[T any](ctx context.Context, e *Engine, provided ...any) ([]T, error) {
+func Run[T any](ctx context.Context, e *Engine, provided ...any) (T, error) {
+	// Init zero T value
+	var out T
 	if e == nil || !e.initialized {
-		return nil, errors.New("error running engine that has not been initialized")
+		return out, errors.New("error running engine that has not been initialized")
 	}
 
 	// Validate provided inputs
-	err := validateProvided(provided, e.outputTypes)
+	err := validateProvided(out, provided, e.outputTypes)
 	if err != nil {
-		return nil, err
+		return out, err
 	}
 
 	// Initialize storage with provided inputs
@@ -127,6 +129,7 @@ func Run[T any](ctx context.Context, e *Engine, provided ...any) ([]T, error) {
 		notifiers[outTU] = make(chan struct{})
 	}
 
+	// Run functions
 	eg, ctx := errgroup.WithContext(ctx)
 	for _, fn := range e.functions {
 		eg.Go(fn(ctx, storage, notifiers))
@@ -134,22 +137,24 @@ func Run[T any](ctx context.Context, e *Engine, provided ...any) ([]T, error) {
 
 	// Wait for all functions to complete
 	if err := eg.Wait(); err != nil {
-		return nil, err
+		return out, err
 	}
 
-	// Collect outputs
-	var out []T
+	// Find output T
 	storage.Range(func(_ any, val any) bool {
 		valV := val.(reflect.Value)
 		valT := valV.Type()
 		valTU, _ := unwrapOptional(valT)
 		if e.outputTypes[valTU] {
-			if v, ok := convert[T](valV); ok {
-				out = append(out, v)
+			// Return first output that matches T
+			if valTU == reflect.TypeOf((*T)(nil)).Elem() {
+				out = valV.Interface().(T)
+				return false
 			}
 		}
 		return true
 	})
+
 	return out, nil
 }
 
@@ -375,12 +380,19 @@ func getPosOfType[T any](in []reflect.Type) int {
 	return -1
 }
 
-func validateProvided(provided []any, outputs map[reflect.Type]bool) error {
+func validateProvided(out any, provided []any, outputs map[reflect.Type]bool) error {
 	// Unwrap any Optional[T] output types
 	outputsU := map[reflect.Type]bool{}
+	var canBeOutput bool
 	for outT := range outputs {
 		outTU, _ := unwrapOptional(outT)
 		outputsU[outTU] = true
+		if outTU == reflect.TypeOf(out) {
+			canBeOutput = true
+		}
+	}
+	if !canBeOutput {
+		return fmt.Errorf("output type %s does not match any provided input types", reflect.TypeOf(out))
 	}
 
 	checked := map[reflect.Type]bool{}
