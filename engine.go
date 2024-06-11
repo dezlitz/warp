@@ -90,7 +90,7 @@ func Initialize(fns ...any) (engine *Engine, err error) {
 }
 
 // Run executes the engine functions in the order determined by their dependencies. It returns the output
-// of each function where the type matches the generic type T, or is convertible to T.
+// of each function where the type matches the generic type T.
 //
 // If any function returns an error, the execution is stopped and the error is returned.
 //
