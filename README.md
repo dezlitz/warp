@@ -98,7 +98,7 @@ type J struct {
 func main() {
     // Initialize the engine
     engine, err := warp.Initialize(
-        func(ctx context.Context, a A, b B, optInput warp.Optional[C]) (c C, err error) {
+        func(ctx context.Context, a A, b B) (c C, err error) {
             // Simulate a database call
             dbResult, err := func(ctx context.Context) (string, error) {
                 select {
