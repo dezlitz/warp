@@ -1,5 +1,5 @@
 <p align="center">
-    <img src="https://github.com/madlitz/warp/assets/4271492/8d500e6a-e67b-48e9-9feb-06390fb8277c">
+    <img src="https://github.com/dezlitz/warp/assets/4271492/8d500e6a-e67b-48e9-9feb-06390fb8277c">
 </p>
 
 # Warp
@@ -9,9 +9,9 @@ It combines paradigms of dependency injection and pipeline execution to provide 
 It uses reflection during initialization to build a dependency graph of the functions and then runs them in the correct order when the engine is executed. Dependencies are resolved using the input and output types of the functions
 parameters and return values.
 
-<img width="742" alt="Warp Function Diagram" src="https://github.com/madlitz/warp/assets/4271492/05da1e3f-4fe1-4cfa-9c25-a6c617ac7825">
+<img width="742" alt="Warp Function Diagram" src="https://github.com/dezlitz/warp/assets/4271492/05da1e3f-4fe1-4cfa-9c25-a6c617ac7825">
 
-In the diagram above the you initiate the engine with the 5 funcs where `a`-`j` are params with unique types. 
+In the diagram above the you initiate the engine with the 5 funcs where `a`-`j` are params with unique types.
 You then run the engine as many times as you like with your available inputs which are any types not produced as outputs by your funcs, i.e. in this case `a`, `b`, `d` and `i`.
 
 ```myVar, err := warp.Run[j](ctx, ngn, a, b, d, i)``` will produce a return value `myVar` with type `j`.
@@ -43,10 +43,10 @@ All functions will run concurrently in their own Goroutine as soon as their inpu
 
 ### Optional parameters
 By default if a function (or one of its upstream functions) does not have the input it requires from the parameters passed to the `Run` function, it will not run.
-If however, the input that was missing was declared wrapped in `warp.Optional[A]` it will run regardless, where `warp.Optional[A].Set` will be true if the upstream function ran, false otherwise. 
+If however, the input that was missing was declared wrapped in `warp.Optional[A]` it will run regardless, where `warp.Optional[A].Set` will be true if the upstream function ran, false otherwise.
 This is called an optional input.
 
-You may also declare an output of a function as optional by wrapping it in `warp.Optional`. In this case, the output of the function is considered to be missing by downstream 
+You may also declare an output of a function as optional by wrapping it in `warp.Optional`. In this case, the output of the function is considered to be missing by downstream
 functions if `warp.Optional[A].Set == false`. So `func(A) B` would NOT run in this case.
 
 If both an output of one function, `func(A) warp.Optional[B]` and the input to another, `func(warp.Optional[B]) C` are both optional, then the downstream function will run as
@@ -56,7 +56,7 @@ expected passing through both `B.Value` and `B.Set`.
 ## Installation
 
 ```bash
-go get github.com/madlitz/warp
+go get github.com/dezlitz/warp
 ```
 
 ## Usage
@@ -71,7 +71,7 @@ import (
     "net/http"
     "time"
 
-    "github.com/madlitz/warp"
+    "github.com/dezlitz/warp"
 )
 
 // Define type aliases for each unique type for this example
@@ -185,8 +185,8 @@ Some analyzers call out to 3rd party APIs and Databases while others simply perf
 The last analyzer aggregates the result of all other analyzers so we have a record of how each decision is made.
 
 ## Benefits
-The end result is that each function you define is decoupled from how and when it is executed. 
-This makes composing functions together much easier as you don't have to write all the boilerplate 
+The end result is that each function you define is decoupled from how and when it is executed.
+This makes composing functions together much easier as you don't have to write all the boilerplate
 to pass outputs to inputs and decide on the order of execution.
 
 It can also assist in unit testing as each function can be tested in isolation, knowing that the engine
@@ -199,7 +199,7 @@ MIT
 
 ## Author
 
-madlitz
+dezlitz
 
 ## Contributing
 
